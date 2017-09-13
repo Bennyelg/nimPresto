@@ -1,6 +1,12 @@
 # prestodb-Nim 
 
-Simple presto-db connector using nim.
+Simple presto-db connector using nim. (Still under heavy development.)
+
+## What Works?
+* connect
+* execute
+* fetchOne
+* fetchAll
 
 ## Usage:
 
