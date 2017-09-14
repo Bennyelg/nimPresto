@@ -2,17 +2,26 @@
 
 Simple presto-db connector using nim. (Still under heavy development.)
 
-## What Works?
+## What Works ?
 * connect
 * execute
 * fetchOne
 * fetchAll
+* getColumns
 
 ## Usage:
 
 ```nim
-    var con = connect("host", 8889, "hive", "default", "benny")
+    import presto
+    let con = connect("host", 8889, "hive", "default", "benny")
+    defer: con.close()
     var cur = con.cursor()
     cur.execute("SELECT NOW()")
     echo(cur.fetchOne())
+```
+
+## Installation:
+
+```bash
+nimble install presto
 ```

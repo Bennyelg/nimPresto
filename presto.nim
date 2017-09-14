@@ -4,8 +4,18 @@ import sequtils
 import httpclient
 import json
 
-proc range(arg: int): seq[int] = 
-    result.newSeq(arg)
+#[
+    PrestoDb Connector
+    Writer: elgazarbenny at gmail.com
+    description: Simple Naive implementation in-order to use presto-db database.
+]#
+
+proc range(size: int): seq[int] = 
+    result.newSeq(size)
+
+type NoConnectionError = object of Exception
+type CursorError = object of Exception
+type NoTransactionError = object of Exception
 
 type
     ResultSet = ref object
@@ -32,43 +42,51 @@ type
         port: int
         cur: Cursor
 
-method close(this: Connection) {.base.} =
+proc close*(this: Connection)  =
+    # There is no Actual close so just cleaning the connection information. 
+    this.cur = Cursor()
+    this.host = ""
+    this.port = -1
     discard
 
-method commit(this: Connection) {.base.} =
+proc commit*(this: Connection)  =
     discard
 
-method cursor*(this: Connection): Cursor {.base.} =
+proc cursor*(this: Connection): Cursor  =
     return this.cur
 
-method fetchOne*(this: Cursor): seq[string] {.base.} =
+proc fetchOne*(this: Cursor): seq[string]  =
     if this.resultSet.data.len == 0:
         raise newException(IndexError, "No Rows")
     return this.resultSet.data.pop()
 
-method fetchAll*(this: Cursor): seq[seq[string]] {.base.} =
+proc fetchAll*(this: Cursor): seq[seq[string]]  =
     return this.resultSet.data
 
-method processResponse(this: Cursor, response: Response) {.base.} =
+
+proc getColumns(this: Cursor): seq[string] =
+    return this.resultSet.columns
+
+proc processResponse(this: Cursor, response: Response)  =
     if response.status != "200 OK":
-        raise newException(HttpRequestError, "Status code returned bad.")
+        raise newException(NoConnectionError, "Status code returned bad. %s" % response.status)
     let data = parseJson(response.body)
     if data.hasKey("error"):
-        raise newException(SystemError, data["error"].str)
+        raise newException(CursorError, data["error"].getStr)
     var state = data["stats"]["state"].str
     if not data.hasKey("nextUri"):
         this.resultSet.nextUri = ""
         this.resultSet.state = "FINISHED"
         return
     if not data.hasKey("columns"):
-        this.resultSet.nextUri = data["nextUri"].str
+        this.resultSet.nextUri = data["nextUri"].getStr
         this.resultSet.state = state
         this.resultSet.data = @[]
         this.resultSet.columns = @[]
         return
     if data.hasKey("data"):
         if data.hasKey("nextUri"):
-            var nextUri = data["nextUri"].str
+            var nextUri = data["nextUri"].getStr
             this.resultSet.nextUri = nextUri
         else:
             this.resultSet.nextUri = ""
@@ -79,16 +97,15 @@ method processResponse(this: Cursor, response: Response) {.base.} =
         this.resultSet.state = state
         this.resultSet.columns = columns
     if data.hasKey("nextUri") and not data.hasKey("data"):
-        var nextUri = data["nextUri"].str
+        var nextUri = data["nextUri"].getStr
         this.resultSet.nextUri = nextUri
         this.resultSet.state = state
     return
 
-method rollback(this: Connection) {.base.} =
-    raise newException(ValueError, "Presto does not have transcations")
+proc rollback*(this: Connection)  =
+    raise newException(NoTransactionError, "Presto does not have transcations")
 
-method execute*(this: Cursor, query: string) {.base.} =
-    # Adding some presto session properties is seted.
+proc execute*(this: Cursor, query: string)  =
     this.resultSet = ResultSet(nextUri: "", state: "STARTED", columns: @[])
     var additional: seq[string] = @[]
     if this.sessionProps.len != 0:
@@ -136,7 +153,9 @@ proc connect*(host: string, port: int, catalog: string, schema: string,
 
 
 when isMainModule:
-    var con = connect("host", 8889, "hive", "default", "benny")
+    let con = connect("host", 8889, "hive", "default", "benny")
+    defer: con.close()
     var cur = con.cursor()
-    cur.execute("query")
+    cur.execute("SELECT NOW()")
     echo(cur.fetchOne())
+    echo(cur.getColumns())
