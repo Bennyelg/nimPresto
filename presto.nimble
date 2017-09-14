@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.1.5"
+version       = "0.5.0"
 author        = "Bennyelg"
 description   = "prestodb simple connector"
 license       = "MIT"
