@@ -64,7 +64,7 @@ proc fetchAll*(this: Cursor): seq[seq[string]]  =
     return this.resultSet.data
 
 
-proc getColumns(this: Cursor): seq[string] =
+proc getColumns*(this: Cursor): seq[string] =
     return this.resultSet.columns
 
 proc processResponse(this: Cursor, response: Response)  =
