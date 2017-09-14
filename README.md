@@ -1,5 +1,6 @@
-# prestodb-Nim 
 
+# prestodb-Nim [![nimble](https://raw.githubusercontent.com/yglukhov/nimble-tag/master/nimble.png)](https://github.com/yglukhov/nimble-tag)
+[![nimble](https://github.com/bennyelg/nimPresto/tree/master/presto_nim.png)](https://github.com/benny/nimPresto)
 Simple presto-db connector using nim. (Still under heavy development.)
 
 ## What Works ?
