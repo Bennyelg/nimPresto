@@ -25,3 +25,13 @@ Simple presto-db connector using nim. (Still under heavy development.)
 ```bash
 nimble install presto
 ```
+
+
+## contributing 
+
+I'll be happy to get any help, just work & pull request.
+
+
+## TODO:
+* A lot of tests.
+* Improving Fetchs by using iterators.
