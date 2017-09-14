@@ -6,6 +6,7 @@ Simple presto-db connector using nim. (Still under heavy development.)
 * connect
 * execute
 * fetchOne
+* fetchMany(size)
 * fetchAll
 * getColumns
 
@@ -34,4 +35,3 @@ I'll be happy to get any help, just work & pull request.
 
 ## TODO:
 * A lot of tests.
-* Improving Fetchs by using iterators.

@@ -3,6 +3,7 @@ import strutils
 import sequtils
 import httpclient
 import json
+import os
 
 #[
     PrestoDb Connector
@@ -19,6 +20,7 @@ type NoTransactionError = object of Exception
 
 type
     ResultSet = ref object
+        client: HttpClient
         nextUri: string
         state: string
         columns: seq[string]
@@ -55,15 +57,6 @@ proc commit*(this: Connection)  =
 proc cursor*(this: Connection): Cursor  =
     return this.cur
 
-proc fetchOne*(this: Cursor): seq[string]  =
-    if this.resultSet.data.len == 0:
-        raise newException(IndexError, "No Rows")
-    return this.resultSet.data.pop()
-
-proc fetchAll*(this: Cursor): seq[seq[string]]  =
-    return this.resultSet.data
-
-
 proc getColumns*(this: Cursor): seq[string] =
     return this.resultSet.columns
 
@@ -92,6 +85,7 @@ proc processResponse(this: Cursor, response: Response)  =
             this.resultSet.nextUri = ""
         var columns = data["columns"].mapIt(it["name"].str)
         var dataset = data["data"].getElems
+        this.resultSet.data = @[]
         for data in dataset:
             this.resultSet.data.add(data.mapIt(it.getStr))
         this.resultSet.state = state
@@ -126,25 +120,52 @@ proc execute*(this: Cursor, query: string)  =
     if additional.len > 0:
         client.headers.add("X-Presto-Session", additional.join(","))
     this.resultSet.nextUri = url
-    if this.resultSet.state == "STARTED":
-        var response = client.request(this.resultSet.nextUri, httpMethod = HttpPost, body = query)
+    this.resultSet.client = client
+    var response = client.request(this.resultSet.nextUri, httpMethod = HttpPost, body = query)
+    this.processResponse(response)
+
+proc fetchOne*(this: Cursor): seq[string] =
+    if this.resultSet.state == "FINISHED":
+        raise newException(CursorError, "No More Rows.")
+    if this.resultSet.data.len > 0:
+        return this.resultSet.data.pop()
+    elif this.resultSet.data.len == 0:
+        os.sleep(500)  # Sleeps 500 miliseconds before each request.
+        var response = this.resultSet.client.request(this.resultSet.nextUri, httpMethod = HttpGet)
         this.processResponse(response)
+
+    return this.resultSet.data.pop()
+
+proc fetchMany*(this: Cursor, amount: int): seq[seq[string]]  =
+    var setOfResults: seq[seq[string]] = @[]
+    for _ in countup(1, amount):
+        var element = this.fetchOne()
+        setOfResults.add(element)
+    return setOfResults
+
+proc fetchAll*(this: Cursor): seq[seq[string]] =
+    var queryData: seq[seq[string]] = @[]
     while true:
-        var response = client.request(this.resultSet.nextUri, httpMethod = HttpGet)
-        this.processResponse(response)
         if this.resultSet.state == "FINISHED":
             break
+        if this.resultSet.data.len > 0:
+            queryData.add(this.resultSet.data)
+        # Sleeps 500 miliseconds before each request.
+        os.sleep(100)
+        var response = this.resultSet.client.request(this.resultSet.nextUri, httpMethod = HttpGet)
+        this.processResponse(response)
+    return queryData
 
 proc connect*(host: string, port: int, catalog: string, schema: string,
               username: string, source = "NimPresto", sessionProps = ""): Connection =
     let cursor = Cursor(catalog: catalog,
-                     schema: schema,
-                     source: source, 
-                     sessionProps: sessionProps,
-                     poolInterval: "1", 
-                     username: username,
-                     host: host,
-                     port: port.intToStr)
+                        schema: schema,
+                        source: source, 
+                        sessionProps: sessionProps,
+                        poolInterval: "1", 
+                        username: username,
+                        host: host,
+                        port: port.intToStr)
     return Connection(
         host: host,
         port: port,
@@ -153,9 +174,13 @@ proc connect*(host: string, port: int, catalog: string, schema: string,
 
 
 when isMainModule:
-    let con = connect("host", 8889, "hive", "default", "benny")
+    let con = connect("HOST", 8889, "hive", "dwh", "benny")
     defer: con.close()
     var cur = con.cursor()
-    cur.execute("SELECT NOW()")
-    echo(cur.fetchOne())
-    echo(cur.getColumns())
+    cur.execute("SQL")
+    #echo(cur.getColumns())
+    # for s in cur.fetchMany(10):
+    #     echo(s)
+    # echo(cur.fetchOne())
+    # echo("===")
+    # echo(cur.fetchOne())
