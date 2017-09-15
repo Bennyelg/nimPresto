@@ -17,7 +17,7 @@ Simple presto-db connector using nim. (Still under heavy development.)
 
 ```nim
     import db_presto
-    let con = open("host", 8889, "hive", "default", "benny")
+    let conn = db_presto.open(host="HOST", port=8889, catalog="hive", schema="dwh", username="benny")
     defer: con.close()
     var cur = con.cursor()
     cur.execute("SELECT NOW()")
