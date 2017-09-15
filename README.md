@@ -16,8 +16,8 @@ Simple presto-db connector using nim. (Still under heavy development.)
 ## Usage:
 
 ```nim
-    import presto
-    let con = connect("host", 8889, "hive", "default", "benny")
+    import db_presto
+    let con = open("host", 8889, "hive", "default", "benny")
     defer: con.close()
     var cur = con.cursor()
     cur.execute("SELECT NOW()")
@@ -37,4 +37,5 @@ I'll be happy to get any help, just work & pull request.
 
 
 ## TODO:
-* A lot of tests.
+* Table coursor.
+* Tests.
