@@ -64,7 +64,8 @@ proc close*(this: Connection)  =
 proc commit*(this: Connection)  =
     raise newException(NoTransactionError, "Presto does not have transcations.")
 
-proc cursor*(this: Connection): Cursor  =
+proc cursor*(this: Connection, tableCursor: bool = false): Cursor  =
+    this.cur.tableCursor = if tableCursor: true else: false
     return this.cur
 
 proc rollback*(this: Connection)  =
@@ -165,7 +166,7 @@ proc fetchAll*(this: Cursor): seq[seq[string]] =
 
 proc open*(host: string, port: int, protocol: string = "http", catalog: string, schema: string,
            username: string, source = "NimPresto", poolInterval = 1,
-           sessionProps = "", tableCursor = false): Connection =
+           sessionProps = ""): Connection =
     if protocol notin ["http", "https"]:
         raise newException(NotValidProtocolError, "The protocol you specified is not valid protocol: $1" % protocol)
     let cursor = Cursor(catalog: catalog,
@@ -173,7 +174,6 @@ proc open*(host: string, port: int, protocol: string = "http", catalog: string, 
                         source: source, 
                         sessionProps: sessionProps,
                         poolInterval: poolInterval * 1000,
-                        tableCursor: tableCursor,
                         username: username,
                         host: host,
                         protocol: protocol,
@@ -195,9 +195,3 @@ when isMainModule:
     var cur = con.cursor()
     cur.execute("SELECT * FROM abc")
     echo(cur.fetchOne())
-    #echo(cur.getColumns())
-    # for s in cur.fetchMany(10):
-    #     echo(s)
-    # echo(cur.fetchOne())
-    # echo("===")
-    # echo(cur.fetchOne())
