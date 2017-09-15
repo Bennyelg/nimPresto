@@ -14,11 +14,12 @@ import os
 proc range(size: int): seq[int] = 
     result.newSeq(size)
 
-type NoConnectionError = object of Exception
-type CursorError = object of Exception
-type QueryExecutionError = object of Exception
-type NoTransactionError = object of Exception
-type NotValidProtocolError = object of Exception
+type 
+    NoConnectionError = object of Exception
+    CursorError = object of Exception
+    QueryExecutionError = object of Exception
+    NoTransactionError = object of Exception
+    NotValidProtocolError = object of Exception
 
 type
     ResultSet = ref object
@@ -27,8 +28,7 @@ type
         state: string
         columns: seq[string]
         data: seq[seq[string]]
-    
-type
+
     Cursor = ref object
         catalog: string
         schema: string
@@ -42,7 +42,6 @@ type
         port: string
         resultSet: ResultSet
 
-type
     Connection = ref object of RootObj
         host: string
         port: int
@@ -52,7 +51,7 @@ type
 proc ping(this: Connection): bool =
     var client = newHttpClient(timeout=this.timeOutInSeconds * 100)
     var url = this.cur.protocol & "://" & this.host & ":" & this.port.intToStr
-    if client.get(url).status != "200 OK":
+    if client.get(url).status != Http200:
         return false
     return true
 
@@ -61,7 +60,6 @@ proc close*(this: Connection)  =
     this.cur = Cursor()
     this.host = ""
     this.port = -1
-    discard
 
 proc commit*(this: Connection)  =
     raise newException(NoTransactionError, "Presto does not have transcations.")
@@ -76,8 +74,8 @@ proc getColumns*(this: Cursor): seq[string] =
     return this.resultSet.columns
 
 proc processResponse(this: Cursor, response: Response)  =
-    if response.status != "200 OK":
-        raise newException(NoConnectionError, "Status code returned bad. %s" % response.status)
+    if response.status != Http200:
+        raise newException(NoConnectionError, "Status code returned bad. $1" % response.status)
     let data = parseJson(response.body)
     if data.hasKey("error"):
         raise newException(QueryExecutionError, data["error"]["message"].getStr)
@@ -169,7 +167,7 @@ proc open*(host: string, port: int, protocol: string = "http", catalog: string, 
            username: string, source = "NimPresto", poolInterval = 1,
            sessionProps = "", tableCursor = false): Connection =
     if protocol notin ["http", "https"]:
-        raise newException(NotValidProtocolError, "The protocol you specified is not valid protocol: %s" % protocol)
+        raise newException(NotValidProtocolError, "The protocol you specified is not valid protocol: $1" % protocol)
     let cursor = Cursor(catalog: catalog,
                         schema: schema,
                         source: source, 
@@ -192,7 +190,7 @@ proc open*(host: string, port: int, protocol: string = "http", catalog: string, 
 
 
 when isMainModule:
-    let con = open(host="host", port=8889, catalog="hive", schema="dwh", username="benny")
+    let con = open(host="host.com", protocol="xxx", port=8889, catalog="hive", schema="dwh", username="benny")
     defer: con.close()
     var cur = con.cursor()
     cur.execute("SELECT * FROM abc")
