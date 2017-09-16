@@ -6,7 +6,7 @@
 Simple presto-db connector using nim. (Still under heavy development.)
 
 ## What Works ?
-* connect
+* open
 * execute
 * fetchOne
 * fetchMany(size)
