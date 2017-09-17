@@ -35,7 +35,6 @@ type
         sessionProps: string
         pollInterval: int
         username: string
-        tableCursor: bool
         host: string
         protocol: string
         port: string
@@ -46,6 +45,7 @@ type
         port: int
         timeout: int
         cur: Cursor
+
 
 using
     cur: Cursor
@@ -93,8 +93,7 @@ proc dbFormat(formatstr: SqlQuery, args: varargs[string]): string =
 
 template sql(query: string): SqlQuery = SqlQuery(query)
 
-template cursor*(con; useTableCur: bool = false): Cursor =
-    con.cur.tableCursor = if useTableCur: true else: false
+template cursor*(con): Cursor =
     con.cur
 
 template getColumns*(cur): seq[string] = cur.resultSet.columns
@@ -162,45 +161,69 @@ proc execute*(cur; query: SqlQuery) =
     let response = client.request(cur.resultSet.nextUri, httpMethod = HttpPost, body = dbFormat(query))
     cur.processResponse(response)
 
-proc fetchOne*(cur): seq[string] =
-    if cur.resultSet.state == "FINISHED":
-        raise newException(CursorError, "No more rows left.")
-    
-    if cur.resultSet.data.len > 0:
-        return cur.resultSet.data.pop()
-    
-    elif cur.resultSet.data.len == 0:
-        os.sleep(cur.pollInterval)
-        var response = cur.resultSet.client.request(cur.resultSet.nextUri, httpMethod = HttpGet)
-        cur.processResponse(response)
+proc fetchSeqOne(cur): seq[string] =
     try:
         result = cur.resultSet.data.pop()
     except IndexError:
         raise newException(CursorError, "No more rows left.")
 
-proc fetchMany*(cur; amount: int): seq[seq[string]] =
-    var dataSet: seq[seq[string]] = @[]
+proc fetchTableOne(cur): Table[string, string] =
+    try:
+        result = zip(cur.getColumns, cur.resultSet.data.pop()).toTable
+    except IndexError:
+        raise newException(CursorError, "No more rows left.")  
+
+proc fetchOne*(cur; asTable: static[bool]): seq[string] | Table[string, string] =
+    if cur.resultSet.state == "FINISHED":
+        raise newException(CursorError, "No more rows left.")
+    elif cur.resultSet.data.len == 0:
+        os.sleep(cur.pollInterval)
+        var response = cur.resultSet.client.request(cur.resultSet.nextUri, httpMethod = HttpGet)
+        cur.processResponse(response)    
+    when asTable == true:
+        cur.fetchTableOne()
+    else:
+        cur.fetchSeqOne()
+
+# proc fetchTableMany(cur): seq[Table[string, string]] =
+#     discard
+
+# proc fetchSeqMany(cur): seq[seq[string]] = 
+#     discard
+
+proc fetchMany*(cur; amount: int, asTable: static[bool]): seq[seq[string]] | seq[Table[string, string]] =
+    when asTable == true:
+        var dataSet: seq[Table[string, string]] = @[]
+    else:
+        var dataSet: seq[seq[string]] = @[]
     for i in 0..<amount:
         try:
-            var row = cur.fetchOne()
+            var row = cur.fetchOne(asTable)
             dataSet.add(row)
         except CursorError:
             break
     return dataSet
      
 
-proc fetchAll*(cur): seq[seq[string]] =
-    result = @[]
+proc fetchAll*(cur; asTable: static[bool]): seq[seq[string]] | seq[Table[string, string]] =
+    when asTable == true:
+        var allSet: seq[Table[string, string]] = @[]
+    else:
+        var allSet: seq[seq[string]] = @[]
+
     while cur.resultSet.state != "FINISHED":
         if cur.resultSet.data.len > 0:
-            result.add(cur.resultSet.data)
+            for row in cur.fetchMany(cur.resultSet.data.len, asTable):
+                allSet.add(row)
         os.sleep(cur.pollInterval)
         let response = cur.resultSet.client.request(cur.resultSet.nextUri, httpMethod = HttpGet)
         cur.processResponse(response)
+    
+    return allSet
 
 proc open*(host: string, port: int, protocol = "http",
            catalog, schema, username: string, source = "NimPresto",
-           pollInterval = 1, sessionProps = "", tableCursor = false): Connection =
+           pollInterval = 1, sessionProps = ""): Connection =
     
     if protocol notin ["http", "https"]:
         raise newException(NotValidProtocolError, "Not valid protocol: $1" % protocol)
@@ -229,8 +252,8 @@ proc open*(host: string, port: int, protocol = "http",
 
 
 when isMainModule:
-    let con = open(host="xxxx", port=8889, catalog="hive", schema="dwh", username="benny")
+    let con = open(host="host", port=8889, catalog="hive", schema="dwh", username="benny")
     defer: con.close()
     var cur = con.cursor()
-    cur.execute(sql"SELECT * FROM table LIMIT 10")
-    echo(cur.fetchMany(10))
+    cur.execute(sql"SELECT * FROM table LIMIT 1150")
+    echo(cur.fetchAll(asTable=true))
