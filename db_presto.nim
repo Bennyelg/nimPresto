@@ -38,7 +38,6 @@ type
         host: string
         protocol: string
         port: string
-        p: bool
         resultSet: ResultSet
     
     Connection = ref object of RootObj
