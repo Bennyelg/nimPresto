@@ -20,7 +20,7 @@ Simple presto-db connector using nim. (Still under heavy development.)
     let conn = open(host="HOST", port=8889, catalog="hive", schema="dwh", username="benny")
     defer: con.close()
     var cur = con.cursor()
-    cur.execute("SELECT NOW()")
+    cur.execute(sql"SELECT NOW()")
     echo(cur.fetchOne())
 ```
 
