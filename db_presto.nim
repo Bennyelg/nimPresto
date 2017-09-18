@@ -91,7 +91,7 @@ proc dbFormat(formatstr: SqlQuery, args: varargs[string]): string =
       add(result, c)
 
 
-template sql(query: string): SqlQuery = SqlQuery(query)
+template sql*(query: string): SqlQuery = SqlQuery(query)
 
 template cursor*(con): Cursor =
     con.cur
