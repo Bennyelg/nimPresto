@@ -1,0 +1,9 @@
+sudo: required
+
+services:
+  - docker
+
+before_install:
+  - docker build -t .
+script:
+  -  nim -c -r tests/db_presto_test.nim
