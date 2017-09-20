@@ -63,12 +63,11 @@ proc close*(con) =
     con.port = -1
 
 
-
 #proc commit*(con) {.error: "Presto doesn't have transaction support".}
 
 #proc rollback*(con) {.error: "Presto doesn't have transaction support".}
 
-proc dbQuote*(s: string): string =
+proc dbQuote(s: string): string =
   ## DB quotes the string.
   result = "'"
   for c in items(s):

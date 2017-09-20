@@ -3,21 +3,22 @@
 
 ![alt tag](https://github.com/Bennyelg/nimPresto/blob/master/presto_nim.jpg)
 
-Simple presto-db connector using nim. (Still under heavy development.)
+Simple presto-db connector using nim.
+
 
 ## What Works ?
 * open
-* execute
-* fetchOne
-* fetchMany(size)
-* fetchAll
-* getColumns
+* execute(sql"sql")
+* fetchOne(asTable=true/false)
+* fetchMany(size, asTable=true/false)
+* fetchAll(asTable=true/false)
+* getColumns()
 
 ## Usage:
 
 ```nim
     import db_presto
-    let conn = open(host="HOST", port=8889, catalog="hive", schema="dwh", username="benny")
+    let conn = open(host="HOST", port=port, catalog="hive", schema="dwh", username="benny")
     defer: con.close()
     var cur = con.cursor()
     cur.execute(sql"SELECT NOW()")
@@ -30,12 +31,6 @@ Simple presto-db connector using nim. (Still under heavy development.)
 nimble install presto
 ```
 
-
 ## contributing 
 
 I'll be happy to get any help, just work & pull request.
-
-
-## TODO:
-* Table coursor.
-* Tests.
