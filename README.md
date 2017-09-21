@@ -28,7 +28,7 @@ Simple presto-db connector using nim.
 ## Installation:
 
 ```bash
-nimble install presto
+nimble install db_presto
 ```
 
 ## contributing 
