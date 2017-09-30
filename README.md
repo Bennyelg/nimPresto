@@ -5,6 +5,9 @@
 
 Simple presto-db connector using nim.
 
+## Current Version:
+
+Pre-release 0.9.9.
 
 ## What Works ?
 * open
@@ -22,7 +25,7 @@ Simple presto-db connector using nim.
     defer: con.close()
     var cur = con.cursor()
     cur.execute(sql"SELECT NOW()")
-    echo(cur.fetchOne())
+    echo(cur.fetchOne(asTable=false))
 ```
 
 ## Installation:
@@ -31,6 +34,6 @@ Simple presto-db connector using nim.
 nimble install db_presto
 ```
 
-## contributing 
+## contributing
 
 I'll be happy to get any help, just work & pull request.
