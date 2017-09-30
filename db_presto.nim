@@ -1,5 +1,6 @@
 {.experimental.}
 import tables
+export tables
 import strutils
 import sequtils
 import httpclient
@@ -145,7 +146,6 @@ proc execute*(cur; query: SqlQuery) =
       
     let client = newHttpClient()
     let url = "$1://$2:$3/v1/statement" % [cur.protocol, cur.host, cur.port]
-    echo(url)
     client.headers = newHttpHeaders(
       {
           "X-Presto-Catalog": cur.catalog,
@@ -183,12 +183,6 @@ proc fetchOne*(cur; asTable: static[bool]): seq[string] | Table[string, string] 
         cur.fetchTableOne()
     else:
         cur.fetchSeqOne()
-
-# proc fetchTableMany(cur): seq[Table[string, string]] =
-#     discard
-
-# proc fetchSeqMany(cur): seq[seq[string]] = 
-#     discard
 
 proc fetchMany*(cur; amount: int, asTable: static[bool]): seq[seq[string]] | seq[Table[string, string]] =
     when asTable == true:
