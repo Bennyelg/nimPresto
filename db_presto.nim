@@ -111,17 +111,22 @@ proc processResponse(cur; response: Response) =
     if not data.hasKey("nextUri"):
         cur.resultSet.nextUri = ""
         cur.resultSet.state = "FINISHED"
-        return
-    
+
+    if data.hasKey("nextUri") and not data.hasKey("data"):
+        cur.resultSet.nextUri = data["nextUri"].getStr
+        cur.resultSet.state = state
+
     if not data.hasKey("columns"):
         cur.resultSet.nextUri = data["nextUri"].getStr
         cur.resultSet.state = state
         cur.resultSet.data = @[]
         cur.resultSet.columns = @[]
-        return
     
     if data.hasKey("data"):
-        cur.resultSet.nextUri = data["nextUri"].getStr
+        if not data.hasKey("nextUri"):
+            cur.resultSet.nextUri = ""
+        else:
+            cur.resultSet.nextUri = data["nextUri"].getStr
         let columns = data["columns"].mapIt(it["name"].str)
         let dataset = data["data"].getElems
         cur.resultSet.data = newSeq[seq[string]](dataset.len)
@@ -129,10 +134,6 @@ proc processResponse(cur; response: Response) =
             cur.resultSet.data[i] = dataset[i].mapIt(it.getStr)
         cur.resultSet.state = state
         cur.resultSet.columns = columns
-    
-    if data.hasKey("nextUri") and not data.hasKey("data"):
-        cur.resultSet.nextUri = data["nextUri"].getStr
-        cur.resultSet.state = state
 
 proc execute*(cur; query: SqlQuery) =
     var additional: seq[string] = @[]
@@ -173,12 +174,13 @@ proc fetchTableOne(cur): Table[string, string] =
         raise newException(CursorError, "No more rows left.")  
 
 proc fetchOne*(cur; asTable: static[bool]): seq[string] | Table[string, string] =
-    if cur.resultSet.state == "FINISHED":
-        raise newException(CursorError, "No more rows left.")
-    elif cur.resultSet.data.len == 0:
-        os.sleep(cur.pollInterval)
-        var response = cur.resultSet.client.request(cur.resultSet.nextUri, httpMethod = HttpGet)
-        cur.processResponse(response)    
+    while cur.resultSet.state != "FINISHED":
+        if cur.resultSet.data.len == 0:
+            os.sleep(cur.pollInterval)
+            var response = cur.resultSet.client.request(cur.resultSet.nextUri, httpMethod = HttpGet)
+            cur.processResponse(response)   
+        else:
+            break 
     when asTable == true:
         cur.fetchTableOne()
     else:
@@ -205,12 +207,15 @@ proc fetchAll*(cur; asTable: static[bool]): seq[seq[string]] | seq[Table[string,
         var allSet: seq[seq[string]] = @[]
 
     while cur.resultSet.state != "FINISHED":
+        os.sleep(cur.pollInterval)
         if cur.resultSet.data.len > 0:
             for row in cur.fetchMany(cur.resultSet.data.len, asTable):
                 allSet.add(row)
-        os.sleep(cur.pollInterval)
+        
         let response = cur.resultSet.client.request(cur.resultSet.nextUri, httpMethod = HttpGet)
         cur.processResponse(response)
+    for row in cur.fetchMany(cur.resultSet.data.len, asTable):
+        allSet.add(row)
     
     return allSet
 
@@ -245,8 +250,8 @@ proc open*(host: string, port: int, protocol = "http",
 
 
 when isMainModule:
-    let con = open(host="host", port=8889, catalog="hive", schema="dwh", username="benny")
+    let con = open(host="presto-db.gtforge.com", port=8889, catalog="hive", schema="default", username="benny")
     defer: con.close()
     var cur = con.cursor()
-    cur.execute(sql"SELECT * FROM table LIMIT 1150")
-    echo(cur.fetchAll(asTable=true))
+    cur.execute(sql"SELECT distinct event_name FROM app_events where occurred_date = date'2017-09-09'")
+    echo(cur.fetchOne(asTable=true).len)
