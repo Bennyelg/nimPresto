@@ -7,7 +7,7 @@ Simple presto-db connector using nim.
 
 ## Current Version:
 
-Pre-release 0.9.9.
+Release 1.0
 
 ## What Works ?
 * open
@@ -16,12 +16,13 @@ Pre-release 0.9.9.
 * fetchMany(size, asTable=true/false)
 * fetchAll(asTable=true/false)
 * getColumns()
+* authentication
 
 ## Usage:
 
 ```nim
     import db_presto
-    let conn = open(host="HOST", port=port, catalog="hive", schema="dwh", username="benny")
+    let conn = open(host="HOST", port=port, catalog="hive", schema="dwh", username="benny", password="xxx")
     defer: con.close()
     var cur = con.cursor()
     cur.execute(sql"SELECT NOW()")
