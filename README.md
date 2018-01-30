@@ -38,3 +38,6 @@ nimble install db_presto
 ## contributing
 
 I'll be happy to get any help, just work & pull request.
+
+## TODOs:
+Now After 1.0 released - rewrite and reorganized the all module.
