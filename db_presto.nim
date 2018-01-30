@@ -7,7 +7,8 @@ import httpclient
 import json
 import os
 import db_common
-
+import net
+import base64
 #[
     PrestoDb Connector
     Writer: elgazarbenny at gmail.com
@@ -36,6 +37,7 @@ type
         sessionProps: string
         pollInterval: int
         username: string
+        password: string
         host: string
         protocol: string
         port: string
@@ -51,11 +53,6 @@ type
 using
     cur: Cursor
     con: Connection
-
-proc ping(con): bool =
-    let client = newHttpClient(timeout = con.timeout * 100)
-    let url = "$1://$2:$3" % [con.cur.protocol, con.host, $con.port]
-    result = client.get(url).status == Http200
 
 proc close*(con) =
     # There is no actual close so just cleaning the connection information. 
@@ -129,9 +126,10 @@ proc processResponse(cur; response: Response) =
             cur.resultSet.nextUri = data["nextUri"].getStr
         let columns = data["columns"].mapIt(it["name"].str)
         let dataset = data["data"].getElems
+        echo(dataset)
         cur.resultSet.data = newSeq[seq[string]](dataset.len)
         for i in 0..dataset.len - 1:
-            cur.resultSet.data[i] = dataset[i].mapIt(it.getStr)
+            cur.resultSet.data[i] = dataset[i].mapIt($it)
         cur.resultSet.state = state
         cur.resultSet.columns = columns
 
@@ -147,6 +145,7 @@ proc execute*(cur; query: SqlQuery) =
       
     let client = newHttpClient()
     let url = "$1://$2:$3/v1/statement" % [cur.protocol, cur.host, cur.port]
+    echo(url)
     client.headers = newHttpHeaders(
       {
           "X-Presto-Catalog": cur.catalog,
@@ -155,6 +154,8 @@ proc execute*(cur; query: SqlQuery) =
           "X-Presto-User": cur.username
       }
     )
+    if cur.username != "" and cur.password != "":
+        client.headers.add("Authorization", "Basic " & encode(cur.username & ":" & cur.password))
     if additional.len > 0:
         client.headers.add("X-Presto-Session", additional.join(","))
     cur.resultSet = ResultSet(nextUri: url, state: "STARTED", columns: @[], client: client)
@@ -220,7 +221,7 @@ proc fetchAll*(cur; asTable: static[bool]): seq[seq[string]] | seq[Table[string,
     return allSet
 
 proc open*(host: string, port: int, protocol = "http",
-           catalog, schema, username: string, source = "NimPresto",
+           catalog, schema, username: string, password: string, source = "NimPresto",
            pollInterval = 1, sessionProps = ""): Connection =
     
     if protocol notin ["http", "https"]:
@@ -233,6 +234,7 @@ proc open*(host: string, port: int, protocol = "http",
       sessionProps: sessionProps,
       pollInterval: pollInterval * 1000,
       username: username,
+      password: password,
       host: host,
       protocol: protocol,
       port: $port
@@ -245,13 +247,12 @@ proc open*(host: string, port: int, protocol = "http",
         cur: cursor
     )
 
-    if not result.ping():
-        raise newException(NoConnectionError, "Failed to connect to the database.")
-
-
 when isMainModule:
-    let con = open(host="host", port=8889, catalog="hive", schema="default", username="benny")
+    let con = open(protocol="https", host="host", port=8443,
+                   catalog="hive", schema="xxx",
+                   username="xxx", password="xxx")
     defer: con.close()
     var cur = con.cursor()
-    cur.execute(sql"SELECT distinct event_name FROM app_events where occurred_date = date'2017-09-09'")
-    echo(cur.fetchOne(asTable=true).len)
+    cur.execute(sql"SELECT distinct count(*) as cnt, env FROM table group by env")
+    echo(cur.fetchAll(asTable=false))
+
