@@ -99,28 +99,25 @@ iterator execute(self; query: SqlQuery): JsonNode =
   var response = self.client.request(self.url, httpMethod = HttpPost, body = dbFormat(query))
   var respData = parseJson(response.body)
   
-  self.syncProgress(respData)
-  
   while self.status != Status.finished:
     
     if i != 0:
       response = self.client.request(self.url, httpMethod = HttpGet, body = dbFormat(query))
       respData = parseJson(response.body)
     
-    i += 1
+    inc i
     
     if respData.hasKey("data"):
       for row in extractQueryData(respData["data"]):
         yield row
 
-      #   self.columns = respData["columns"].mapIt(it["name"].str)
-
     self.syncProgress(respData)
 
 
+
 when isMainModule:
-  let prestoConnection = newPrestoClient("https", "host", "8443", "hive", "default", "user", "pass")
-  for r in prestoConnection.execute(SqlQuery("SELECT * from default.live_events limit 5")):
+  let conn = newPrestoClient("https", "host", "8443", "hive", "default", "user", "pass")
+  for r in conn.execute(SqlQuery("SELECT * from default.live_events limit 5")):
     echo(r)
   
 
