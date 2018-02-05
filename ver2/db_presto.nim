@@ -83,6 +83,8 @@ proc newPrestoClient* (protocol, host, port, catalog,
     cursorState: CursorState.close
   )
 
+template sql*(query: string): SqlQuery = SqlQuery(query)
+
 proc dbQuote(s: string): string =
   ## DB quotes the string.
   result = "'"
@@ -205,7 +207,7 @@ proc fetchOne*(cur): seq[JsonNode] =
 when isMainModule:
   let conn = newPrestoClient("https", "host", "8443", "hive", "default", "user", "password")
   var ctx = conn.cursor()
-  ctx.execute(SqlQuery("select * from gett_algo.weather_forecast5d3h_v2 LIMIT 11"))
+  ctx.execute(sql"select * from gett_algo.weather_forecast5d3h_v2 LIMIT 11")
 
 
   
