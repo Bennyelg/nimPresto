@@ -3,8 +3,8 @@ import httpclient, base64, json, strutils, sequtils
 type
   CursorAlreadyClosedException = object of Exception
   CursorAlreadyOpenedException = object of Exception
-  OpenCursorInstanceNotFound = object of Exception
-  NoMoreRowsLeftException = object of Exception
+  OpenCursorInstanceNotFound   = object of Exception
+  NoMoreRowsLeftException      = object of Exception
 
 type
   PrestoClient = ref object of RootObj
@@ -14,11 +14,11 @@ type
     status:       Status
     timeout:      int
     cursorState:  CursorState
-    curx:       Cursor
+    curx:         Cursor
   
   Cursor = ref object
-    client: PrestoClient
-    query*: SqlQuery
+    client:      PrestoClient
+    query:       SqlQuery
     iteratorObj: ResultSet
   
   ResultSet = ref object
@@ -28,7 +28,7 @@ type
 
   CursorState {.pure.} = enum
     close = "CLOSE"
-    open = "OPEN"
+    open  = "OPEN"
 
   SqlQuery = distinct string
   
@@ -39,7 +39,7 @@ type
 
 using
   self: PrestoClient
-  cur: Cursor
+  cur:  Cursor
 
 proc newPrestoClient* (protocol, host, port, 
                        catalog, schema: string): PrestoClient =
@@ -54,10 +54,10 @@ proc newPrestoClient* (protocol, host, port,
   })
 
   return PrestoClient(
-    client:  client,
-    url:     "$1://$2:$3/v1/statement" % [protocol, host, port],
-    timeout: 100,
-    status:  Status.started,
+    client:      client,
+    url:         "$1://$2:$3/v1/statement" % [protocol, host, port],
+    timeout:     100,
+    status:      Status.started,
     cursorState: CursorState.close
 
   )
@@ -76,10 +76,10 @@ proc newPrestoClient* (protocol, host, port, catalog,
   })
   
   return PrestoClient(
-    client:  client,
-    url:     "$1://$2:$3/v1/statement" % [protocol, host, port],
-    timeout: 100,
-    status:  Status.started,
+    client:      client,
+    url:         "$1://$2:$3/v1/statement" % [protocol, host, port],
+    timeout:     100,
+    status:      Status.started,
     cursorState: CursorState.close
   )
 
