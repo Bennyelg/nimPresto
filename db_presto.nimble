@@ -1,8 +1,8 @@
 # Package
 
-version       = "1.0"
+version       = "1.0.0"
 author        = "Bennyelg"
-description   = "prestodb simple connector"
+description   = "prestodb connector"
 license       = "MIT"
 
 # Dependencies

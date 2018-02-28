@@ -1,69 +1,89 @@
-{.experimental.}
-import tables
-export tables
-import strutils
-import sequtils
-import httpclient
-import json
-import os
-import db_common
-import net
-import base64
-#[
-    PrestoDb Connector
-    Writer: elgazarbenny at gmail.com
-    description: Simple Naive implementation in-order to use presto-db database.
-]#
+import httpclient, base64, json, strutils, sequtils
 
-type 
-    NoConnectionError = object of Exception
-    CursorError = object of Exception
-    QueryExecutionError = object of Exception
-    NotValidProtocolError = object of Exception
-    
-    SqlQuery = distinct string
+type
+  CursorAlreadyClosedException = object of Exception
+  CursorAlreadyOpenedException = object of Exception
+  OpenCursorInstanceNotFound   = object of Exception
+  NoMoreRowsLeftException      = object of Exception
 
-    ResultSet = ref object
-        client: HttpClient
-        nextUri: string
-        state: string
-        columns: seq[string]
-        data: seq[seq[string]]
+type
+  PrestoClient = ref object of RootObj
+    client:       HttpClient
+    url:          string
+    port:         string
+    status:       Status
+    timeout:      int
+    cursorState:  CursorState
+    curx:         Cursor
   
-    Cursor = ref object
-        catalog: string
-        schema: string
-        source: string
-        sessionProps: string
-        pollInterval: int
-        username: string
-        password: string
-        host: string
-        protocol: string
-        port: string
-        resultSet: ResultSet
-    
-    Connection = ref object of RootObj
-        host: string
-        port: int
-        timeout: int
-        cur: Cursor
+  Cursor = ref object
+    client:      PrestoClient
+    query:       SqlQuery
+    iteratorObj: ResultSet
+  
+  ResultSet = ref object
+    activeIterator: bool
+    iterInstance: iterator(): JsonNode
 
+
+  CursorState {.pure.} = enum
+    close = "CLOSE"
+    open  = "OPEN"
+
+  SqlQuery = distinct string
+  
+  Status {.pure.} = enum
+    finished  = "FINISHED",
+    started   = "STARTED", 
+    planning  = "PLANNING"
 
 using
-    cur: Cursor
-    con: Connection
+  self: PrestoClient
+  cur:  Cursor
 
-proc close*(con) =
-    # There is no actual close so just cleaning the connection information. 
-    con.cur = Cursor()
-    con.host = ""
-    con.port = -1
+proc newPrestoClient* (protocol, host, port, 
+                       catalog, schema: string): PrestoClient =
+  
+  let client = newHttpClient()
+  
+  client.headers = newHttpHeaders({
+    "X-Presto-Catalog": catalog,
+    "X-Presto-Schema":  schema,
+    "X-Presto-Source":  "nimPersto",
+    "X-Presto-User":    "nimPresto"
+  })
 
+  return PrestoClient(
+    client:      client,
+    url:         "$1://$2:$3/v1/statement" % [protocol, host, port],
+    timeout:     100,
+    status:      Status.started,
+    cursorState: CursorState.close
 
-#proc commit*(con) {.error: "Presto doesn't have transaction support".}
+  )
 
-#proc rollback*(con) {.error: "Presto doesn't have transaction support".}
+proc newPrestoClient* (protocol, host, port, catalog,
+                       schema, username, password: string): PrestoClient =
+  
+  let client = newHttpClient()
+  
+  client.headers = newHttpHeaders({
+    "X-Presto-Catalog": catalog,
+    "X-Presto-Schema":  schema,
+    "X-Presto-Source":  "nimPersto",
+    "X-Presto-User":    username,
+    "Authorization":    "Basic " & encode(username & ":" & password)
+  })
+  
+  return PrestoClient(
+    client:      client,
+    url:         "$1://$2:$3/v1/statement" % [protocol, host, port],
+    timeout:     100,
+    status:      Status.started,
+    cursorState: CursorState.close
+  )
+
+template sql*(query: string): SqlQuery = SqlQuery(query)
 
 proc dbQuote(s: string): string =
   ## DB quotes the string.
@@ -87,172 +107,108 @@ proc dbFormat(formatstr: SqlQuery, args: varargs[string]): string =
     else:
       add(result, c)
 
+proc syncProgress(self; data: JsonNode) =
 
-template sql*(query: string): SqlQuery = SqlQuery(query)
+  let state = data["stats"]["state"].str
+  
+  if state == "FINISHED" or not data.hasKey("nextUri"):
+    self.status = Status.finished
+  
+  if data.hasKey("nextUri"):
+    self.url = data["nextUri"].getStr
+  
+proc extractQueryData(responseDataChunk: JsonNode): seq[JsonNode] =
+  responseDataChunk.getElems
 
-template cursor*(con): Cursor =
-    con.cur
-
-template getColumns*(cur): seq[string] = cur.resultSet.columns
-
-proc processResponse(cur; response: Response) =
-    if response.status != Http200:
-        raise newException(NoConnectionError, "Bad response status code: $1" % response.status)
+iterator initiateQuery(self; query: SqlQuery): JsonNode =
+  var i = 0
+  var response = self.client.request(self.url, httpMethod = HttpPost, body = dbFormat(query))
+  var respData = parseJson(response.body)
+  
+  while self.status != Status.finished:
+    if i != 0:
+      response = self.client.request(self.url, httpMethod = HttpGet, body = dbFormat(query))
+      respData = parseJson(response.body)
     
-    let data = parseJson(response.body)
+    inc i
     
-    if data.hasKey("error"):
-        raise newException(QueryExecutionError, data["error"]["message"].str)
-    
-    let state = data["stats"]["state"].str
-    if not data.hasKey("nextUri"):
-        cur.resultSet.nextUri = ""
-        cur.resultSet.state = "FINISHED"
+    if respData.hasKey("data"):
+      for row in extractQueryData(respData["data"]):
+        yield row
 
-    if data.hasKey("nextUri") and not data.hasKey("data"):
-        cur.resultSet.nextUri = data["nextUri"].getStr
-        cur.resultSet.state = state
-
-    if not data.hasKey("columns"):
-        cur.resultSet.nextUri = data["nextUri"].getStr
-        cur.resultSet.state = state
-        cur.resultSet.data = @[]
-        cur.resultSet.columns = @[]
-    
-    if data.hasKey("data"):
-        if not data.hasKey("nextUri"):
-            cur.resultSet.nextUri = ""
-        else:
-            cur.resultSet.nextUri = data["nextUri"].getStr
-        let columns = data["columns"].mapIt(it["name"].str)
-        let dataset = data["data"].getElems
-        echo(dataset)
-        cur.resultSet.data = newSeq[seq[string]](dataset.len)
-        for i in 0..dataset.len - 1:
-            cur.resultSet.data[i] = dataset[i].mapIt($it)
-        cur.resultSet.state = state
-        cur.resultSet.columns = columns
+    self.syncProgress(respData)
 
 proc execute*(cur; query: SqlQuery) =
-    var additional: seq[string] = @[]
-    if cur.sessionProps.len != 0:
-        let additionalProperties = cur.sessionProps.split(",")
-        let k = newSeq[int](additionalProperties.len)
-        let evens = filterIt(zip(k, additionalProperties), it[0] mod 2 == 0)
-        let odds = filterIt(zip(k, additionalProperties), it[0] mod 2 != 0)
-        for ind in 0..<evens.len:
-            additional.add(format("$1=$2", evens[ind][1], odds[ind][1]))
-      
-    let client = newHttpClient()
-    let url = "$1://$2:$3/v1/statement" % [cur.protocol, cur.host, cur.port]
-    echo(url)
-    client.headers = newHttpHeaders(
-      {
-          "X-Presto-Catalog": cur.catalog,
-          "X-Presto-Schema": cur.schema,
-          "X-Presto-Source": cur.source,
-          "X-Presto-User": cur.username
-      }
+  
+  if cur.client.cursorState == CursorState.close:
+    raise newException(OpenCursorInstanceNotFound, "Open Cursor not found please initialize it first.")
+
+  cur.query = query
+
+proc cursor*(self): Cursor =
+  
+  if self.cursorState == CursorState.open:
+    raise newException(CursorAlreadyOpenedException, "Cursor is open.")
+  
+  self.cursorState = CursorState.open
+  Cursor(
+    client: self,
+    iteratorObj: ResultSet(
+      activeIterator: false
     )
-    if cur.username != "" and cur.password != "":
-        client.headers.add("Authorization", "Basic " & encode(cur.username & ":" & cur.password))
-    if additional.len > 0:
-        client.headers.add("X-Presto-Session", additional.join(","))
-    cur.resultSet = ResultSet(nextUri: url, state: "STARTED", columns: @[], client: client)
-    let response = client.request(cur.resultSet.nextUri, httpMethod = HttpPost, body = dbFormat(query))
-    cur.processResponse(response)
+  )
 
-proc fetchSeqOne(cur): seq[string] =
-    try:
-        result = cur.resultSet.data.pop()
-    except IndexError:
-        raise newException(CursorError, "No more rows left.")
+proc close*(self) =
+  if self.cursorState == CursorState.open:
+    self.cursorState = CursorState.close
+  raise newException(CursorAlreadyClosedException, "Cursor is closed.")
 
-proc fetchTableOne(cur): Table[string, string] =
-    try:
-        result = zip(cur.getColumns, cur.resultSet.data.pop()).toTable
-    except IndexError:
-        raise newException(CursorError, "No more rows left.")  
 
-proc fetchOne*(cur; asTable: static[bool]): seq[string] | Table[string, string] =
-    while cur.resultSet.state != "FINISHED":
-        if cur.resultSet.data.len == 0:
-            os.sleep(cur.pollInterval)
-            var response = cur.resultSet.client.request(cur.resultSet.nextUri, httpMethod = HttpGet)
-            cur.processResponse(response)   
-        else:
-            break 
-    when asTable == true:
-        cur.fetchTableOne()
-    else:
-        cur.fetchSeqOne()
+proc fetchAll*(cur): seq[JsonNode] =
+  
+  if cur.client.cursorState == CursorState.close:
+    raise newException(OpenCursorInstanceNotFound, "Open Cursor not found please initialize it first.")
 
-proc fetchMany*(cur; amount: int, asTable: static[bool]): seq[seq[string]] | seq[Table[string, string]] =
-    when asTable == true:
-        var dataSet: seq[Table[string, string]] = @[]
-    else:
-        var dataSet: seq[seq[string]] = @[]
-    for i in 0..<amount:
-        try:
-            var row = cur.fetchOne(asTable)
-            dataSet.add(row)
-        except CursorError:
-            break
-    return dataSet
-     
-
-proc fetchAll*(cur; asTable: static[bool]): seq[seq[string]] | seq[Table[string, string]] =
-    when asTable == true:
-        var allSet: seq[Table[string, string]] = @[]
-    else:
-        var allSet: seq[seq[string]] = @[]
-
-    while cur.resultSet.state != "FINISHED":
-        os.sleep(cur.pollInterval)
-        if cur.resultSet.data.len > 0:
-            for row in cur.fetchMany(cur.resultSet.data.len, asTable):
-                allSet.add(row)
-        
-        let response = cur.resultSet.client.request(cur.resultSet.nextUri, httpMethod = HttpGet)
-        cur.processResponse(response)
-    for row in cur.fetchMany(cur.resultSet.data.len, asTable):
-        allSet.add(row)
+  toSeq(cur.client.initiateQuery(cur.query))
     
-    return allSet
+proc fetchmany(cur): iterator(): JsonNode =
+  
+  if cur.client.cursorState == CursorState.close:
+    raise newException(OpenCursorInstanceNotFound, "Open Cursor not found please initialize it first.")
 
-proc open*(host: string, port: int, protocol = "http",
-           catalog, schema, username: string, password: string, source = "NimPresto",
-           pollInterval = 1, sessionProps = ""): Connection =
+  return iterator(): JsonNode =
+    for r in cur.client.initiateQuery(cur.query):
+      yield r
+
+proc fetchMany*(cur; numOfRows: int): seq[JsonNode] =
+  var data: seq[JsonNode] = @[]
+  if not cur.iteratorObj.activeIterator:
+    var iter = cur.fetchmany()
+    cur.iteratorObj.activeIterator = true
+    cur.iteratorObj.iterInstance = iter
+  var rowsItered = 0
+  while true:
+    if rowsItered == numOfRows:
+      return data
+    let next = cur.iteratorObj.iterInstance()
+    if not finished(cur.iteratorObj.iterInstance):
+      data.add(next)
+    else:
+      break
+    rowsItered.inc
+  if data.len == 0:
+    raise newException(NoMoreRowsLeftException, "No more rows left.")
+
+proc fetchOne*(cur): seq[JsonNode] =
+  return cur.fetchMany(1)
+  
     
-    if protocol notin ["http", "https"]:
-        raise newException(NotValidProtocolError, "Not valid protocol: $1" % protocol)
-    
-    let cursor = Cursor(
-      catalog: catalog,
-      schema: schema,
-      source: source, 
-      sessionProps: sessionProps,
-      pollInterval: pollInterval * 1000,
-      username: username,
-      password: password,
-      host: host,
-      protocol: protocol,
-      port: $port
-    )
-
-    result = Connection(
-        host: host,
-        port: port,
-        timeout: 5,
-        cur: cursor
-    )
-
 when isMainModule:
-    let con = open(protocol="https", host="host", port=8443,
-                   catalog="hive", schema="xxx",
-                   username="xxx", password="xxx")
-    defer: con.close()
-    var cur = con.cursor()
-    cur.execute(sql"SELECT distinct count(*) as cnt, env FROM table group by env")
-    echo(cur.fetchAll(asTable=false))
+  let conn = newPrestoClient("https", "host", "8443", "hive", "default", "user", "password")
+  var ctx = conn.cursor()
+  ctx.execute(sql"select * from gett_algo.weather_forecast5d3h_v2 LIMIT 11")
+
+
+  
+
 

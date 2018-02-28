@@ -10,23 +10,19 @@ Simple presto-db connector using nim.
 Release 1.0
 
 ## What Works ?
-* open
 * execute(sql"sql")
-* fetchOne(asTable=true/false)
-* fetchMany(size, asTable=true/false)
-* fetchAll(asTable=true/false)
-* getColumns()
+* fetchOne()
+* fetchMany(size)
+* fetchAll()
 * authentication
 
 ## Usage:
 
 ```nim
     import db_presto
-    let conn = open(host="HOST", port=port, catalog="hive", schema="dwh", username="benny", password="xxx")
-    defer: con.close()
-    var cur = con.cursor()
-    cur.execute(sql"SELECT NOW()")
-    echo(cur.fetchOne(asTable=false))
+    let conn = newPrestoClient("https", "host", "8443", "hive", "default", "user", "password")
+    var ctx = conn.cursor()
+    ctx.execute(sql"select * from gett_algo.weather_forecast5d3h_v2 LIMIT 11")
 ```
 
 ## Installation:
@@ -38,6 +34,3 @@ nimble install db_presto
 ## contributing
 
 I'll be happy to get any help, just work & pull request.
-
-## TODOs:
-Now After 1.0 released - rewrite and reorganized the all module.
