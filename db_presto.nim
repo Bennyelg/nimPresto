@@ -1,4 +1,5 @@
 import httpclient, base64, json, strutils, sequtils
+export json
 
 type
   CursorAlreadyClosedException = object of Exception
@@ -99,7 +100,7 @@ proc dbFormat(formatstr: SqlQuery, args: varargs[string]): string =
   var a = 0
   for c in items(string(formatstr)):
     if c == '?':
-      if args[a] == nil:
+      if args[a] == "":
         add(result, "NULL")
       else:
         add(result, dbQuote(args[a]))

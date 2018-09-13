@@ -1,11 +1,11 @@
 # Package
 
-version       = "1.0.1"
+version       = "1.1.0"
 author        = "Bennyelg"
 description   = "prestodb connector"
 license       = "MIT"
 skipDirs = @["tests"]
 # Dependencies
 
-requires "nim >= 0.17.2"
+requires "nim >= 0.18.0"
 
